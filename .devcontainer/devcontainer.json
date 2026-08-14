@@ -1,0 +1,33 @@
+{
+  "name": "Neo-Stack Codespace",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "vscode",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "enableNonRootDocker": true,
+      "moby": true
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22",
+      "pnpm": true
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.profiles.linux": {
+          "tmux": {
+            "path": "tmux",
+            "args": ["new-session", "-A", "-s", "main"]
+          }
+        },
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "workbench.startupEditor": "none"
+      },
+      "extensions": []
+    }
+  }
+}
