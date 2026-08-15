@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "skills": {
+    "accessibility": {
+      "source": "addyosmani/web-quality-skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "bffe3d08cfe92ebad63699f74ce29e35c19850ebfbf474c1463183cfe34d6a09"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "82fb11a63fb1e35ee2469516ed02d54695f783115b1540c0e783197af4240a3a"
+    },
+    "next-best-practices": {
+      "source": "vercel-labs/next-skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "22d9bba45864c4ae8acca9f6430290634343b7de91005d090e0ba201bdbbb5da"
+    },
+    "next-cache-components": {
+      "source": "vercel-labs/next-skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "82a02f95879e9adf1a5a89f9ca2f51813e41ff3bab3c723cc8905f5a926bdd30"
+    },
+    "next-upgrade": {
+      "source": "vercel-labs/next-skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "265833561c41038b4a626585b46186cff859b7f9b2254ae6b88d01648790a7b4"
+    },
+    "nodejs-backend-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "autoskills-registry",
+      "computedHash": "710a5e6f83c46e8f6c43356df55c143a7375c4414559a581654ce51709138c55"
+    },
+    "nodejs-best-practices": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "7361ab02fb6b09913e3bdd9cf61c629ed6c17de9485e6a781054e5d437ccfc29"
+    },
+    "prisma-cli": {
+      "source": "prisma/skills",
+      "sourceType": "github",
+      "skillPath": "prisma-cli/SKILL.md",
+      "computedHash": "129e77cba93984b88d66cf0f66d5788f5487431f17f189a1ab2d839976874e3b"
+    },
+    "prisma-client-api": {
+      "source": "prisma/skills",
+      "sourceType": "github",
+      "skillPath": "prisma-client-api/SKILL.md",
+      "computedHash": "cbbabff961c8e16b2d59f8c1ffb4e7e20be52154e778ab95121e0211d6d09969"
+    },
+    "prisma-compute": {
+      "source": "prisma/skills",
+      "sourceType": "github",
+      "skillPath": "prisma-compute/SKILL.md",
+      "computedHash": "8d6053aefdf0b7c80e981e93c1300d617292efb6a5b0bdd826bc85e47431f3e3"
+    },
+    "prisma-database-setup": {
+      "source": "prisma/skills",
+      "sourceType": "github",
+      "skillPath": "prisma-database-setup/SKILL.md",
+      "computedHash": "6a991a2530a6da7131e3fc71c353e8278702d0146b8b6e1d2fdfc2d3d0a21bd2"
+    },
+    "prisma-driver-adapter-implementation": {
+      "source": "prisma/skills",
+      "sourceType": "github",
+      "skillPath": "prisma-driver-adapter-implementation/SKILL.md",
+      "computedHash": "cc487f1bf36f616ddb3a9478b3527d288dd706d77a9e5dbee9af52dca1eee8e4"
+    },
+    "prisma-mongodb-upgrade": {
+      "source": "prisma/skills",
+      "sourceType": "github",
+      "skillPath": "prisma-mongodb-upgrade/SKILL.md",
+      "computedHash": "b94149ad5f1ec269dfd717b321538de6d39943b2ae6721a0d82302057f57ae18"
+    },
+    "prisma-postgres": {
+      "source": "prisma/skills",
+      "sourceType": "github",
+      "skillPath": "prisma-postgres/SKILL.md",
+      "computedHash": "0422727e18019add9208b86ce862964025acc011ff31fba1d59a01b836bd6272"
+    },
+    "prisma-postgres-setup": {
+      "source": "prisma/skills",
+      "sourceType": "github",
+      "skillPath": "prisma-postgres-setup/SKILL.md",
+      "computedHash": "5dbcf5a488d7cb7136340b86dcf781d6d92cf793f92c105ef644ac31ccac4d3b"
+    },
+    "prisma-upgrade-v7": {
+      "source": "prisma/skills",
+      "sourceType": "github",
+      "skillPath": "prisma-upgrade-v7/SKILL.md",
+      "computedHash": "0e07dc2831f86cf27627df914db43d862b0fc75d72c1f9070434aab7940bad7c"
+    },
+    "seo": {
+      "source": "addyosmani/web-quality-skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "c184da724d1c61ad077f27418ea8e7e88fd54bcdf98165e18be7e4681cbd5e20"
+    },
+    "typescript-advanced-types": {
+      "source": "wshobson/agents",
+      "sourceType": "autoskills-registry",
+      "computedHash": "5ca0e177c6aaaba1889255691224daafdb7d71f317cc70bede1590d3907ded42"
+    },
+    "zod": {
+      "source": "pproenca/dot-skills",
+      "sourceType": "autoskills-registry",
+      "computedHash": "aa8a97195b07763d37494b511f48be90979fd6826c031956c831cfc58f6a24b8"
+    }
+  }
+}

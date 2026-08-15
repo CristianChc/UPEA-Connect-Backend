@@ -1,0 +1,95 @@
+// UPEA Connect API — Prisma Schema
+// Stack: PostgreSQL · Prisma 7 (prisma-client generator)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum FloatingElementType {
+  TEXT
+  IMAGE
+}
+
+enum EventType {
+  EXAM
+  ASSIGNMENT
+  CLASS
+  REMINDER
+  OTHER
+}
+
+model User {
+  id        String   @id @default(cuid())
+  nombre    String
+  email     String   @unique
+  password  String
+  carrera   String
+  semestre  String
+  fotoUrl   String?
+  notes     Note[]
+  events    Event[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Note {
+  id         String     @id @default(cuid())
+  title      String
+  content    String     @db.Text
+  courseName String?
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pages      NotePage[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([userId, courseName])
+}
+
+model NotePage {
+  id              String             @id @default(cuid())
+  pageIndex       Int
+  textContent     String?
+  noteId          String
+  note            Note               @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  floatingElements FloatingElement[]
+
+  @@index([noteId])
+}
+
+model FloatingElement {
+  id        String              @id @default(cuid())
+  type      FloatingElementType
+  positionX Float
+  positionY Float
+  width     Float
+  height    Float
+  text      String?
+  imageUrl  String?
+  pageId    String
+  page      NotePage            @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([pageId])
+}
+
+model Event {
+  id          String    @id @default(cuid())
+  title       String
+  description String?   @db.Text
+  date        DateTime
+  type        EventType
+  isCompleted Boolean   @default(false)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([userId, date])
+}
