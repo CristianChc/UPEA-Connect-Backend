@@ -79,3 +79,4 @@ npm run db:migrate    # crear/aplicar migraciones (dev)
 npm run db:deploy     # aplicar migraciones (producción)
 npm run db:studio     # explorar la base
 ```
+## Desplegado por CristianChc
