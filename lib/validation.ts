@@ -84,6 +84,10 @@ export const listEventsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+export const chatMessageSchema = z.object({
+  message: z.string().min(1, "El mensaje no puede estar vacío").max(2000, "Mensaje demasiado largo"),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
@@ -92,3 +96,4 @@ export type ListNotesQuery = z.infer<typeof listNotesQuerySchema>;
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
+export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
