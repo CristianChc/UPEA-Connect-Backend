@@ -83,7 +83,12 @@ model Event {
   title       String
   description String?   @db.Text
   date        DateTime
-  type        EventType
+  // --- Agregado para calzar con el calendario de Flutter (Anddy) ---
+  endTime     String?   // formato "HH:mm", ej: "11:30"
+  category    String?   // etiqueta libre que muestra la UI (ej: "Física")
+  color       Int?      // color ARGB del evento en el calendario
+  // -------------------------------------------------------------
+  type        EventType @default(OTHER)
   isCompleted Boolean   @default(false)
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
