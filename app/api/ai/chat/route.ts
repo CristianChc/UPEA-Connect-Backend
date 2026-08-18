@@ -21,9 +21,14 @@ Nunca asumas un año distinto al que corresponde según la fecha de hoy, salvo q
 usuario lo diga explícitamente.
 
 Si el usuario te pide crear un EVENTO (examen, tarea, clase, recordatorio) en su calendario,
-o crear un APUNTE/NOTA, extrae los datos que mencione y regrésalos en el campo correspondiente.
+extrae los datos que mencione y regrésalos en el campo correspondiente.
 Si falta algún dato importante (como la fecha de un evento), pregúntalo en tu respuesta de texto
 en vez de inventarlo, y deja actionType en "ninguna".
+
+Si el usuario te pide crear un APUNTE/NOTA sobre un tema, además del título y la materia,
+genera en "noteContent" un resumen inicial breve y útil sobre ese tema (2 a 4 párrafos,
+en texto plano, con la información académica más relevante para empezar a estudiar).
+No dejes "noteContent" vacío cuando actionType sea "crear_nota".
 
 No respondas temas fuera de lo académico o de la app. Sé breve: máximo 3-4 oraciones en "reply".`;
 }
@@ -42,6 +47,10 @@ const RESPONSE_SCHEMA = {
     eventType: { type: "string", enum: ["EXAM", "ASSIGNMENT", "CLASS", "REMINDER", "OTHER"] },
     noteTitle: { type: "string" },
     noteCourse: { type: "string" },
+    noteContent: {
+      type: "string",
+      description: "Resumen inicial del tema, en texto plano, para el cuerpo de la nota. Obligatorio si actionType es crear_nota.",
+    },
   },
   required: ["reply", "actionType"],
 };
@@ -54,6 +63,7 @@ interface GeminiResponse {
   eventType?: string;
   noteTitle?: string;
   noteCourse?: string;
+  noteContent?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -107,12 +117,13 @@ export async function POST(request: NextRequest) {
           tipo: parsed.eventType ?? "OTHER",
         },
       };
-    } else if (parsed.actionType === "crear_nota" && parsed.noteTitle) {
+    } else if (parsed.actionType === "crear_nota" && parsed.noteTitle && parsed.noteContent) {
       action = {
         type: "crear_nota",
         data: {
           titulo: parsed.noteTitle,
           materia: parsed.noteCourse ?? "General",
+          contenido: parsed.noteContent,
         },
       };
     }
