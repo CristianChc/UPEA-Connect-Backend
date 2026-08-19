@@ -52,7 +52,7 @@ const RESPONSE_SCHEMA = {
       description: "Resumen inicial del tema, en texto plano, para el cuerpo de la nota. Obligatorio si actionType es crear_nota.",
     },
   },
-  required: ["reply", "actionType"],
+  required: ["reply", "actionType", "noteContent"],
 };
 
 interface GeminiResponse {
@@ -85,6 +85,10 @@ export async function POST(request: NextRequest) {
         generationConfig: {
           responseMimeType: "application/json",
           responseSchema: RESPONSE_SCHEMA,
+          // Sin este límite, Gemini puede cortar la respuesta a la mitad de
+          // "noteContent" (que ahora puede ser largo) y el JSON queda
+          // incompleto -> JSON.parse() explota con "Unterminated string".
+          maxOutputTokens: 2048,
         },
       }),
     });
