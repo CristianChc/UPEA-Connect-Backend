@@ -61,17 +61,12 @@ export const listNotesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-// Reemplaza estos 3 bloques en lib/validation.ts (createEventSchema, updateEventSchema
-// ya no se define aparte porque createEventSchema.partial() la genera igual).
-// El resto del archivo (registerSchema, notes, etc.) se queda exactamente igual.
-
 export const eventTypeSchema = z.enum(["EXAM", "ASSIGNMENT", "CLASS", "REMINDER", "OTHER"]);
 
 export const createEventSchema = z.object({
   title: z.string().min(1, "El título es obligatorio"),
   description: z.string().optional(),
   date: z.coerce.date("date debe ser una fecha válida"),
-  // Campos nuevos, todos opcionales para no romper nada existente:
   endTime: z.string().regex(/^\d{2}:\d{2}$/, "endTime debe tener formato HH:mm").optional(),
   category: z.string().optional(),
   color: z.number().int().optional(),
@@ -79,7 +74,6 @@ export const createEventSchema = z.object({
 });
 
 export const updateEventSchema = createEventSchema.partial();
-
 
 export const completeEventSchema = z.object({
   isCompleted: z.boolean("isCompleted debe ser un booleano"),
@@ -97,6 +91,10 @@ export const chatMessageSchema = z.object({
   message: z.string().min(1, "El mensaje no puede estar vacío").max(2000, "Mensaje demasiado largo"),
 });
 
+export const verifyEmailSchema = z.object({
+  code: z.string().length(6, "El código debe tener 6 dígitos"),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
@@ -106,3 +104,4 @@ export type CreateEventInput = z.infer<typeof createEventSchema>;
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;

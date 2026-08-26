@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { hashPassword, signToken } from "@/lib/auth";
 import { registerSchema } from "@/lib/validation";
+import { createAndSendVerification } from "@/lib/verification";
 import { ApiError, errorResponse, ok } from "@/lib/api-response";
 import type { NextRequest } from "next/server";
 
@@ -11,6 +12,7 @@ const userSelect = {
   carrera: true,
   semestre: true,
   fotoUrl: true,
+  emailVerified: true,
 } as const;
 
 export async function POST(request: NextRequest) {
@@ -32,6 +34,8 @@ export async function POST(request: NextRequest) {
       },
       select: userSelect,
     });
+
+    await createAndSendVerification(user.id, user.email);
 
     const token = await signToken(user.id);
 
