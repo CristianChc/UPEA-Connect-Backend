@@ -13,10 +13,6 @@ export async function POST(request: NextRequest) {
       throw new ApiError("INVALID_CREDENTIALS", "Email o contraseña incorrectos", 401);
     }
 
-    if (!user.emailVerified) {
-      throw new ApiError("EMAIL_NOT_VERIFIED", "Verifica tu correo antes de iniciar sesión", 403);
-    }
-
     const token = await signToken(user.id);
     const safeUser = {
       id: user.id,
