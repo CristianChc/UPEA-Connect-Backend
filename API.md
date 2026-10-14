@@ -293,3 +293,63 @@ Elimina el evento. **204** sin cuerpo.
 | PATCH | `/api/events/:id/complete` | isCompleted | 200 |
 | DELETE | `/api/events/:id` | — | 204 |
 | GET | `/api/health` | — | 200 (healthcheck) |
+
+## Chat con IA (Gemini) e historial
+
+Todos requieren `Authorization: Bearer <token>`.
+
+### `POST /api/ai/chat`
+
+Body:
+
+```json
+{ "message": "Tengo examen de Física el 20 de noviembre", "conversationId": "opcional" }
+```
+
+- Sin `conversationId` se crea una conversación nueva (título automático).
+- Con `conversationId` se usan los últimos 10 mensajes como contexto. Si no existe o no es tuya: `404 NOT_FOUND`.
+
+Respuesta `200`:
+
+```json
+{
+  "reply": "texto de la IA",
+  "action": { "type": "crear_evento | crear_nota", "data": { } },
+  "conversationId": "…",
+  "title": "Examen de Física",
+  "userMessageId": "…",
+  "assistantMessageId": "…"
+}
+```
+
+`action` es `null` si la IA no propone nada. Los mensajes solo se guardan si Gemini respondió bien.
+
+### `GET /api/ai/conversations`
+
+Lista (máx. 50, la más reciente primero):
+
+```json
+{ "conversations": [ { "id": "…", "title": "…", "lastMessage": "…", "createdAt": "…", "updatedAt": "…" } ] }
+```
+
+### `GET /api/ai/conversations/:id`
+
+```json
+{
+  "id": "…", "title": "…", "createdAt": "…", "updatedAt": "…",
+  "messages": [
+    { "id": "…", "role": "USER | ASSISTANT", "text": "…", "action": null,
+      "actionStatus": null, "createdAt": "…" }
+  ]
+}
+```
+
+`actionStatus` es `null` (sin acción), `PENDING`, `DONE` o `DISCARDED`.
+
+### `PATCH /api/ai/conversations/:id/messages/:messageId`
+
+Body `{ "actionStatus": "DONE" | "DISCARDED" }`. Respuesta `200`: `{ "id": "…", "actionStatus": "DONE" }`.
+
+### `DELETE /api/ai/conversations/:id`
+
+Borra la conversación y sus mensajes. Respuesta `204`.
