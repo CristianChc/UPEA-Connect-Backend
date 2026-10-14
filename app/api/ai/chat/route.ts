@@ -1,3 +1,4 @@
+import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { chatMessageSchema } from "@/lib/validation";
 import { errorResponse, ok, ApiError } from "@/lib/api-response";
@@ -7,6 +8,8 @@ import type { NextRequest } from "next/server";
 // que se apaga el 16 de octubre de 2026). Si en el futuro sale un modelo más
 // nuevo de la familia "flash", solo hay que cambiar este string.
 const GEMINI_MODEL = "gemini-3.5-flash";
+// Cuántos mensajes anteriores de la conversación se le mandan a Gemini como contexto.
+const HISTORY_LIMIT = 10;
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 function buildSystemPrompt(): string {
@@ -30,6 +33,12 @@ genera en "noteContent" un resumen inicial breve y útil sobre ese tema (2 a 4 p
 en texto plano, con la información académica más relevante para empezar a estudiar).
 No dejes "noteContent" vacío cuando actionType sea "crear_nota".
 
+Si el mensaje del usuario depende de lo dicho antes en la conversación (por ejemplo "y para el martes?"),
+usa el historial para entenderlo.
+
+Si es el primer mensaje de la conversación, devuelve también "chatTitle": un título corto
+(máximo 5 palabras, sin comillas ni punto final) que resuma de qué trata.
+
 No respondas temas fuera de lo académico o de la app. Sé breve: máximo 3-4 oraciones en "reply".`;
 }
 // Esquema de salida forzado: Gemini SIEMPRE responde en este formato JSON.
@@ -38,6 +47,10 @@ const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
     reply: { type: "string", description: "Respuesta conversacional para mostrar al usuario" },
+    chatTitle: {
+      type: "string",
+      description: "Título corto (máx. 5 palabras) de la conversación. Solo relevante en el primer mensaje.",
+    },
     actionType: {
       type: "string",
       enum: ["ninguna", "crear_evento", "crear_nota"],
@@ -57,6 +70,7 @@ const RESPONSE_SCHEMA = {
 
 interface GeminiResponse {
   reply: string;
+  chatTitle?: string;
   actionType: "ninguna" | "crear_evento" | "crear_nota";
   eventTitle?: string;
   eventDate?: string;
@@ -66,14 +80,48 @@ interface GeminiResponse {
   noteContent?: string;
 }
 
+// Título de la conversación: el que sugiere Gemini; si viene vacío, el inicio del mensaje.
+function buildTitle(suggested: string | undefined, message: string): string {
+  const clean = (suggested ?? "").replace(/["“”.]/g, "").trim();
+  const base = clean.length > 0 ? clean : message.trim();
+  return base.length > 60 ? `${base.slice(0, 57)}...` : base;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    await requireAuth(request); // solo confirma que el usuario tiene sesión válida
-    const { message } = chatMessageSchema.parse(await request.json());
+    const userId = await requireAuth(request);
+    const { message, conversationId } = chatMessageSchema.parse(await request.json());
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new ApiError("CONFIG_ERROR", "GEMINI_API_KEY no configurada en el servidor", 500);
+    }
+
+    // Historial: si la conversación ya existe, se cargan los últimos mensajes
+    // (y se verifica que pertenezca al usuario).
+    let history: { role: "user" | "model"; parts: { text: string }[] }[] = [];
+    if (conversationId) {
+      const owned = await prisma.chatConversation.findFirst({
+        where: { id: conversationId, userId },
+        select: { id: true },
+      });
+      if (!owned) {
+        throw new ApiError("NOT_FOUND", "Conversación no encontrada", 404);
+      }
+
+      const previous = await prisma.chatMessage.findMany({
+        where: { conversationId },
+        orderBy: { createdAt: "desc" },
+        take: HISTORY_LIMIT,
+        select: { role: true, text: true },
+      });
+
+      history = previous.reverse().map((m) => ({
+        role: m.role === "USER" ? "user" : "model",
+        parts: [{ text: m.text }],
+      }));
+      // Gemini espera que el contexto empiece con un turno del usuario.
+      while (history.length > 0 && history[0].role === "model") history.shift();
     }
 
     const geminiRes = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
@@ -81,7 +129,7 @@ export async function POST(request: NextRequest) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: buildSystemPrompt() }] },
-        contents: [{ role: "user", parts: [{ text: message }] }],
+        contents: [...history, { role: "user", parts: [{ text: message }] }],
         generationConfig: {
           responseMimeType: "application/json",
           responseSchema: RESPONSE_SCHEMA,
@@ -132,7 +180,49 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    return ok({ reply: parsed.reply, action });
+    // Se guardan ambos mensajes solo si Gemini respondió bien, así el historial
+    // siempre queda alternando usuario/asistente. Fechas con 1 ms de diferencia
+    // para que el orden sea estable.
+    const now = Date.now();
+    const messagesData = [
+      { role: "USER" as const, text: message, createdAt: new Date(now) },
+      {
+        role: "ASSISTANT" as const,
+        text: parsed.reply,
+        createdAt: new Date(now + 1),
+        ...(action ? { action, actionStatus: "PENDING" as const } : {}),
+      },
+    ];
+
+    const lastTwo = {
+      orderBy: { createdAt: "desc" },
+      take: 2,
+      select: { id: true, role: true },
+    } as const;
+
+    const conversation = conversationId
+      ? await prisma.chatConversation.update({
+          where: { id: conversationId },
+          data: { updatedAt: new Date(), messages: { create: messagesData } },
+          select: { id: true, title: true, messages: lastTwo },
+        })
+      : await prisma.chatConversation.create({
+          data: {
+            userId,
+            title: buildTitle(parsed.chatTitle, message),
+            messages: { create: messagesData },
+          },
+          select: { id: true, title: true, messages: lastTwo },
+        });
+
+    return ok({
+      reply: parsed.reply,
+      action,
+      conversationId: conversation.id,
+      title: conversation.title,
+      userMessageId: conversation.messages.find((m) => m.role === "USER")?.id ?? null,
+      assistantMessageId: conversation.messages.find((m) => m.role === "ASSISTANT")?.id ?? null,
+    });
   } catch (error) {
     return errorResponse(error);
   }

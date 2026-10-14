@@ -89,6 +89,12 @@ export const listEventsQuerySchema = z.object({
 
 export const chatMessageSchema = z.object({
   message: z.string().min(1, "El mensaje no puede estar vacío").max(2000, "Mensaje demasiado largo"),
+  // Si se omite, se crea una conversación nueva automáticamente
+  conversationId: z.string().min(1).optional(),
+});
+
+export const updateChatActionSchema = z.object({
+  actionStatus: z.enum(["DONE", "DISCARDED"], "actionStatus debe ser DONE o DISCARDED"),
 });
 
 export const verifyEmailSchema = z.object({
@@ -104,4 +110,5 @@ export type CreateEventInput = z.infer<typeof createEventSchema>;
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
+export type UpdateChatActionInput = z.infer<typeof updateChatActionSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
