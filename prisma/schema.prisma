@@ -15,6 +15,17 @@ enum FloatingElementType {
   IMAGE
 }
 
+enum ChatRole {
+  USER
+  ASSISTANT
+}
+
+enum ChatActionStatus {
+  PENDING
+  DONE
+  DISCARDED
+}
+
 enum EventType {
   EXAM
   ASSIGNMENT
@@ -35,6 +46,7 @@ model User {
   verification  EmailVerification?
   notes         Note[]
   events        Event[]
+  conversations ChatConversation[]
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 }
@@ -110,4 +122,32 @@ model Event {
 
   @@index([userId])
   @@index([userId, date])
+}
+
+// --- Historial del chat con IA ---
+model ChatConversation {
+  id        String        @id @default(cuid())
+  title     String        @default("Nueva conversación")
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id             String            @id @default(cuid())
+  role           ChatRole
+  text           String            @db.Text
+  // Acción propuesta por la IA ({ type, data }) cuando role = ASSISTANT
+  action         Json?
+  // Estado de la tarjeta de acción: null si el mensaje no tiene acción
+  actionStatus   ChatActionStatus?
+  conversationId String
+  conversation   ChatConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+
+  @@index([conversationId, createdAt])
 }
