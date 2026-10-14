@@ -10,7 +10,46 @@ import type { NextRequest } from "next/server";
 const GEMINI_MODEL = "gemini-3.5-flash";
 // Cuántos mensajes anteriores de la conversación se le mandan a Gemini como contexto.
 const HISTORY_LIMIT = 10;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const geminiUrl = (model: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+// Tiempo máximo de la función en Vercel (los reintentos pueden tardar unos segundos).
+export const maxDuration = 30;
+
+// Gemini (sobre todo en el plan gratuito) a veces responde 503 "high demand".
+// Se reintenta hasta 3 veces con espera creciente (1 s, 2 s). Si define la variable
+// de entorno GEMINI_FALLBACK_MODEL, se prueba también ese modelo de respaldo.
+const RETRYABLE_STATUS = new Set([500, 503, 504]);
+const MAX_ATTEMPTS = 3;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fetchGemini(body: string, apiKey: string): Promise<Response> {
+  const models = [GEMINI_MODEL, process.env.GEMINI_FALLBACK_MODEL].filter(
+    (m): m is string => Boolean(m),
+  );
+  let last: Response | null = null;
+
+  for (const model of models) {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (attempt > 1) await sleep((attempt - 1) * 1000);
+
+      const res = await fetch(`${geminiUrl(model)}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+
+      if (res.ok) return res;
+      last = res;
+      console.error(`Gemini ${model} falló (intento ${attempt}/${MAX_ATTEMPTS}): ${res.status}`);
+
+      // 429 = cuota agotada: reintentar el mismo modelo no sirve, pasa al siguiente.
+      if (res.status === 429 || !RETRYABLE_STATUS.has(res.status)) break;
+    }
+  }
+
+  return last!;
+}
 
 function buildSystemPrompt(): string {
   const hoy = new Date().toISOString().split("T")[0]; // ej: 2026-08-16
@@ -124,10 +163,8 @@ export async function POST(request: NextRequest) {
       while (history.length > 0 && history[0].role === "model") history.shift();
     }
 
-    const geminiRes = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const geminiRes = await fetchGemini(
+      JSON.stringify({
         systemInstruction: { parts: [{ text: buildSystemPrompt() }] },
         contents: [...history, { role: "user", parts: [{ text: message }] }],
         generationConfig: {
@@ -139,7 +176,8 @@ export async function POST(request: NextRequest) {
           maxOutputTokens: 2048,
         },
       }),
-    });
+      apiKey,
+    );
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
