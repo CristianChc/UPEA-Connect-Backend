@@ -10,6 +10,7 @@ import type { NextRequest } from "next/server";
 const HISTORY_LIMIT = 10;
 const geminiUrl = (model: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 // Tiempo máximo de la función en Vercel (los reintentos pueden tardar unos segundos).
 export const maxDuration = 30;
@@ -33,10 +34,69 @@ interface GeminiAttempt {
 // Prueba los modelos recibidos en orden. Con un solo modelo (el usuario eligió
 // uno) solo se usa ese; con varios ("Automático") pasa al siguiente si uno
 // está sin cuota (429) o saturado.
-async function fetchGemini(
-  body: string,
-  apiKey: string,
+type ChatTurn = { role: "user" | "model"; parts: { text: string }[] };
+
+// Arma la petición según el proveedor del modelo (Gemini o Groq, que usa formato OpenAI).
+function buildRequest(
+  model: AiModelOption,
+  keys: { gemini?: string; groq?: string },
+  history: ChatTurn[],
+  message: string,
+): { url: string; init: RequestInit } {
+  if (model.provider === "groq") {
+    const system = `${buildSystemPrompt()}
+
+FORMATO DE SALIDA: responde SIEMPRE solo con un objeto JSON válido (sin texto extra ni markdown) con estas claves:
+reply (string, obligatorio), chatTitle (string, opcional), actionType ("ninguna" | "crear_evento" | "crear_nota", obligatorio),
+eventTitle, eventDate (ISO 8601), eventType ("EXAM" | "ASSIGNMENT" | "CLASS" | "REMINDER" | "OTHER"),
+noteTitle, noteCourse, noteContent (string, obligatorio; vacío "" si actionType no es "crear_nota").`;
+    return {
+      url: GROQ_URL,
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${keys.groq}` },
+        body: JSON.stringify({
+          model: model.id,
+          messages: [
+            { role: "system", content: system },
+            ...history.map((h) => ({
+              role: h.role === "model" ? "assistant" : "user",
+              content: h.parts[0].text,
+            })),
+            { role: "user", content: message },
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: 2048,
+        }),
+      },
+    };
+  }
+
+  return {
+    url: `${geminiUrl(model.id)}?key=${keys.gemini}`,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: buildSystemPrompt() }] },
+        contents: [...history, { role: "user", parts: [{ text: message }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: RESPONSE_SCHEMA,
+          // Sin este límite, Gemini puede cortar la respuesta a la mitad de
+          // "noteContent" y el JSON queda incompleto -> JSON.parse() explota.
+          maxOutputTokens: 2048,
+        },
+      }),
+    },
+  };
+}
+
+async function fetchAi(
+  keys: { gemini?: string; groq?: string },
   models: AiModelOption[],
+  history: ChatTurn[],
+  message: string,
 ): Promise<GeminiAttempt> {
   const deadline = Date.now() + TOTAL_BUDGET_MS;
   let last: GeminiAttempt | null = null;
@@ -48,20 +108,16 @@ async function fetchGemini(
 
       let res: Response;
       try {
-        res = await fetch(`${geminiUrl(model.id)}?key=${apiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
-          signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
-        });
+        const { url, init } = buildRequest(model, keys, history, message);
+        res = await fetch(url, { ...init, signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS) });
       } catch (err) {
-        console.error(`Gemini ${model.id} sin respuesta (intento ${attempt}/${MAX_ATTEMPTS}):`, err);
+        console.error(`${model.provider} ${model.id} sin respuesta (intento ${attempt}/${MAX_ATTEMPTS}):`, err);
         continue; // timeout o error de red: se reintenta
       }
 
       if (res.ok) return { res, model };
       last = { res, model };
-      console.error(`Gemini ${model.id} falló (intento ${attempt}/${MAX_ATTEMPTS}): ${res.status}`);
+      console.error(`${model.provider} ${model.id} falló (intento ${attempt}/${MAX_ATTEMPTS}): ${res.status}`);
 
       // 429 = cuota agotada: reintentar el mismo modelo no sirve, pasa al siguiente.
       if (res.status === 429 || !RETRYABLE_STATUS.has(res.status)) break;
@@ -170,14 +226,16 @@ export async function POST(request: NextRequest) {
       candidates = [chosen];
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new ApiError("CONFIG_ERROR", "GEMINI_API_KEY no configurada en el servidor", 500);
+    const keys = { gemini: process.env.GEMINI_API_KEY, groq: process.env.GROQ_API_KEY };
+    // Se descartan los modelos cuyo proveedor no tiene API key configurada.
+    candidates = candidates.filter((m) => (m.provider === "groq" ? keys.groq : keys.gemini));
+    if (candidates.length === 0) {
+      throw new ApiError("CONFIG_ERROR", "API key de IA no configurada en el servidor", 500);
     }
 
     // Historial: si la conversación ya existe, se cargan los últimos mensajes
     // (y se verifica que pertenezca al usuario).
-    let history: { role: "user" | "model"; parts: { text: string }[] }[] = [];
+    let history: ChatTurn[] = [];
     if (conversationId) {
       const owned = await prisma.chatConversation.findFirst({
         where: { id: conversationId, userId },
@@ -202,26 +260,11 @@ export async function POST(request: NextRequest) {
       while (history.length > 0 && history[0].role === "model") history.shift();
     }
 
-    const { res: geminiRes, model: usedModel } = await fetchGemini(
-      JSON.stringify({
-        systemInstruction: { parts: [{ text: buildSystemPrompt() }] },
-        contents: [...history, { role: "user", parts: [{ text: message }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA,
-          // Sin este límite, Gemini puede cortar la respuesta a la mitad de
-          // "noteContent" (que ahora puede ser largo) y el JSON queda
-          // incompleto -> JSON.parse() explota con "Unterminated string".
-          maxOutputTokens: 2048,
-        },
-      }),
-      apiKey,
-      candidates,
-    );
+    const { res: geminiRes, model: usedModel } = await fetchAi(keys, candidates, history, message);
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
-      console.error("Gemini API error:", errText);
+      console.error(`${usedModel.provider} API error:`, errText);
 
       const modelName = candidates.length > 1 ? "Todos los modelos" : `El modelo «${usedModel.label}»`;
 
@@ -243,7 +286,10 @@ export async function POST(request: NextRequest) {
     }
 
     const geminiData = await geminiRes.json();
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const rawText: string | undefined =
+      usedModel.provider === "groq"
+        ? geminiData?.choices?.[0]?.message?.content
+        : geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!rawText) {
       throw new ApiError("AI_ERROR", "El asistente no pudo responder. Intenta de nuevo", 502);
