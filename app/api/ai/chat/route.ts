@@ -2,12 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { chatMessageSchema } from "@/lib/validation";
 import { errorResponse, ok, ApiError } from "@/lib/api-response";
+import { getAiModels, type AiModelOption } from "@/lib/ai-models";
 import type { NextRequest } from "next/server";
 
-// Modelo gratuito, sin fecha de baja anunciada (a diferencia de gemini-2.5-flash,
-// que se apaga el 16 de octubre de 2026). Si en el futuro sale un modelo más
-// nuevo de la familia "flash", solo hay que cambiar este string.
-const GEMINI_MODEL = "gemini-3.5-flash";
+// Los modelos disponibles se configuran en lib/ai-models.ts (variables GEMINI_MODELS, etc.).
 // Cuántos mensajes anteriores de la conversación se le mandan a Gemini como contexto.
 const HISTORY_LIMIT = 10;
 const geminiUrl = (model: string) =>
@@ -17,38 +15,67 @@ const geminiUrl = (model: string) =>
 export const maxDuration = 30;
 
 // Gemini (sobre todo en el plan gratuito) a veces responde 503 "high demand".
-// Se reintenta hasta 3 veces con espera creciente (1 s, 2 s). Si define la variable
-// de entorno GEMINI_FALLBACK_MODEL, se prueba también ese modelo de respaldo.
+// Se reintenta hasta 3 veces con espera creciente (1 s, 2 s).
 const RETRYABLE_STATUS = new Set([500, 503, 504]);
 const MAX_ATTEMPTS = 3;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function fetchGemini(body: string, apiKey: string): Promise<Response> {
-  const models = [GEMINI_MODEL, process.env.GEMINI_FALLBACK_MODEL].filter(
-    (m): m is string => Boolean(m),
-  );
-  let last: Response | null = null;
+// Tiempo máximo por intento y total, para que la función siempre responda
+// (con un error claro) antes de que Vercel la corte.
+const ATTEMPT_TIMEOUT_MS = 10_000;
+const TOTAL_BUDGET_MS = 24_000;
 
-  for (const model of models) {
+interface GeminiAttempt {
+  res: Response;
+  model: AiModelOption;
+}
+
+// Prueba los modelos recibidos en orden. Con un solo modelo (el usuario eligió
+// uno) solo se usa ese; con varios ("Automático") pasa al siguiente si uno
+// está sin cuota (429) o saturado.
+async function fetchGemini(
+  body: string,
+  apiKey: string,
+  models: AiModelOption[],
+): Promise<GeminiAttempt> {
+  const deadline = Date.now() + TOTAL_BUDGET_MS;
+  let last: GeminiAttempt | null = null;
+
+  outer: for (const model of models) {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (Date.now() > deadline) break outer;
       if (attempt > 1) await sleep((attempt - 1) * 1000);
 
-      const res = await fetch(`${geminiUrl(model)}?key=${apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-      });
+      let res: Response;
+      try {
+        res = await fetch(`${geminiUrl(model.id)}?key=${apiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
+        });
+      } catch (err) {
+        console.error(`Gemini ${model.id} sin respuesta (intento ${attempt}/${MAX_ATTEMPTS}):`, err);
+        continue; // timeout o error de red: se reintenta
+      }
 
-      if (res.ok) return res;
-      last = res;
-      console.error(`Gemini ${model} falló (intento ${attempt}/${MAX_ATTEMPTS}): ${res.status}`);
+      if (res.ok) return { res, model };
+      last = { res, model };
+      console.error(`Gemini ${model.id} falló (intento ${attempt}/${MAX_ATTEMPTS}): ${res.status}`);
 
       // 429 = cuota agotada: reintentar el mismo modelo no sirve, pasa al siguiente.
       if (res.status === 429 || !RETRYABLE_STATUS.has(res.status)) break;
     }
   }
 
-  return last!;
+  if (!last) {
+    throw new ApiError(
+      "AI_BUSY",
+      "La IA tardó demasiado en responder. Intenta de nuevo o elige otro modelo.",
+      504,
+    );
+  }
+  return last;
 }
 
 function buildSystemPrompt(): string {
@@ -129,7 +156,19 @@ function buildTitle(suggested: string | undefined, message: string): string {
 export async function POST(request: NextRequest) {
   try {
     const userId = await requireAuth(request);
-    const { message, conversationId } = chatMessageSchema.parse(await request.json());
+    const { message, conversationId, model } = chatMessageSchema.parse(await request.json());
+
+    // Modelo elegido en la app: "auto" (o sin valor) = probar todos en orden.
+    // Se valida contra la lista del servidor: el cliente no puede pedir cualquier modelo.
+    const availableModels = getAiModels();
+    let candidates = availableModels;
+    if (model && model !== "auto") {
+      const chosen = availableModels.find((m) => m.id === model);
+      if (!chosen) {
+        throw new ApiError("INVALID_MODEL", "Ese modelo ya no está disponible. Elige otro.", 400);
+      }
+      candidates = [chosen];
+    }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -163,7 +202,7 @@ export async function POST(request: NextRequest) {
       while (history.length > 0 && history[0].role === "model") history.shift();
     }
 
-    const geminiRes = await fetchGemini(
+    const { res: geminiRes, model: usedModel } = await fetchGemini(
       JSON.stringify({
         systemInstruction: { parts: [{ text: buildSystemPrompt() }] },
         contents: [...history, { role: "user", parts: [{ text: message }] }],
@@ -177,11 +216,29 @@ export async function POST(request: NextRequest) {
         },
       }),
       apiKey,
+      candidates,
     );
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
       console.error("Gemini API error:", errText);
+
+      const modelName = candidates.length > 1 ? "Todos los modelos" : `El modelo «${usedModel.label}»`;
+
+      if (geminiRes.status === 429) {
+        throw new ApiError(
+          "AI_QUOTA",
+          `${modelName} alcanzó su límite de uso por hoy. ${candidates.length > 1 ? "Intenta más tarde." : "Elige otro modelo o intenta más tarde."}`,
+          429,
+        );
+      }
+      if (geminiRes.status === 503) {
+        throw new ApiError(
+          "AI_BUSY",
+          `${modelName} está saturado en este momento. ${candidates.length > 1 ? "Intenta de nuevo en unos segundos." : "Prueba con otro modelo o reintenta en unos segundos."}`,
+          503,
+        );
+      }
       throw new ApiError("AI_ERROR", "El asistente no pudo responder. Intenta de nuevo", 502);
     }
 
@@ -258,6 +315,7 @@ export async function POST(request: NextRequest) {
       action,
       conversationId: conversation.id,
       title: conversation.title,
+      model: usedModel.id,
       userMessageId: conversation.messages.find((m) => m.role === "USER")?.id ?? null,
       assistantMessageId: conversation.messages.find((m) => m.role === "ASSISTANT")?.id ?? null,
     });

@@ -91,6 +91,8 @@ export const chatMessageSchema = z.object({
   message: z.string().min(1, "El mensaje no puede estar vacío").max(2000, "Mensaje demasiado largo"),
   // Si se omite, se crea una conversación nueva automáticamente
   conversationId: z.string().min(1).optional(),
+  // Modelo elegido en la app ("auto" = automático). Se valida en el servidor.
+  model: z.string().min(1).max(100).optional(),
 });
 
 export const updateChatActionSchema = z.object({
