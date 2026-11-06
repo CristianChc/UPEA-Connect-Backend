@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth";
 import { chatMessageSchema } from "@/lib/validation";
 import { errorResponse, ok, ApiError } from "@/lib/api-response";
 import { getAiModels, type AiModelOption } from "@/lib/ai-models";
+import { seleccionarContexto } from "@/lib/conocimiento";
 import type { NextRequest } from "next/server";
 
 // Los modelos disponibles se configuran en lib/ai-models.ts (variables GEMINI_MODELS, etc.).
@@ -42,9 +43,10 @@ function buildRequest(
   keys: { gemini?: string; groq?: string },
   history: ChatTurn[],
   message: string,
+  contexto?: string,
 ): { url: string; init: RequestInit } {
   if (model.provider === "groq") {
-    const system = `${buildSystemPrompt()}
+    const system = `${buildSystemPrompt(contexto)}
 
 FORMATO DE SALIDA: responde SIEMPRE solo con un objeto JSON válido (sin texto extra ni markdown) con estas claves:
 reply (string, obligatorio), chatTitle (string, opcional), actionType ("ninguna" | "crear_evento" | "crear_nota", obligatorio),
@@ -78,7 +80,7 @@ noteTitle, noteCourse, noteContent (string, obligatorio; vacío "" si actionType
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: buildSystemPrompt() }] },
+        systemInstruction: { parts: [{ text: buildSystemPrompt(contexto) }] },
         contents: [...history, { role: "user", parts: [{ text: message }] }],
         generationConfig: {
           responseMimeType: "application/json",
@@ -97,6 +99,7 @@ async function fetchAi(
   models: AiModelOption[],
   history: ChatTurn[],
   message: string,
+  contexto?: string,
 ): Promise<GeminiAttempt> {
   const deadline = Date.now() + TOTAL_BUDGET_MS;
   let last: GeminiAttempt | null = null;
@@ -108,7 +111,7 @@ async function fetchAi(
 
       let res: Response;
       try {
-        const { url, init } = buildRequest(model, keys, history, message);
+        const { url, init } = buildRequest(model, keys, history, message, contexto);
         res = await fetch(url, { ...init, signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS) });
       } catch (err) {
         console.error(`${model.provider} ${model.id} sin respuesta (intento ${attempt}/${MAX_ATTEMPTS}):`, err);
@@ -134,10 +137,10 @@ async function fetchAi(
   return last;
 }
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(contexto?: string): string {
   const hoy = new Date().toISOString().split("T")[0]; // ej: 2026-08-16
 
-  return `Eres el asistente de UPEA-Connect, una app universitaria de la UPEA (Bolivia).
+  let prompt = `Eres el asistente de UPEA-Connect, una app universitaria de la UPEA (Bolivia).
 Ayudas a estudiantes con dudas académicas de forma breve y clara, en español.
 
 La fecha de hoy es ${hoy}. Usa este dato como referencia para calcular cualquier
@@ -162,6 +165,22 @@ Si es el primer mensaje de la conversación, devuelve también "chatTitle": un t
 (máximo 5 palabras, sin comillas ni punto final) que resuma de qué trata.
 
 No respondas temas fuera de lo académico o de la app. Sé breve: máximo 3-4 oraciones en "reply".`;
+
+  if (contexto) {
+    prompt += `
+
+CONOCIMIENTO OFICIAL DE LA UPEA
+Usa la siguiente información oficial de la UPEA para responder datos específicos
+(trámites, reglamentos, calendario, contactos, campus, otros):
+
+${contexto}
+
+Reglas: usa esa información para datos específicos de la UPEA; si la respuesta no
+está ahí, di que no tienes ese dato y sugiere consultar en secretaría o el canal
+oficial; nunca inventes trámites, fechas, costos ni contactos.`;
+  }
+
+  return prompt;
 }
 // Esquema de salida forzado: Gemini SIEMPRE responde en este formato JSON.
 // Esto es lo que le permite a la app mostrar la tarjetita de "crear evento/nota".
@@ -260,7 +279,13 @@ export async function POST(request: NextRequest) {
       while (history.length > 0 && history[0].role === "model") history.shift();
     }
 
-    const { res: geminiRes, model: usedModel } = await fetchAi(keys, candidates, history, message);
+    const { res: geminiRes, model: usedModel } = await fetchAi(
+      keys,
+      candidates,
+      history,
+      message,
+      await seleccionarContexto(message),
+    );
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
