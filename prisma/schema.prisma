@@ -34,6 +34,15 @@ enum EventType {
   OTHER
 }
 
+enum CategoriaConocimiento {
+  TRAMITES
+  REGLAMENTO
+  CALENDARIO
+  CONTACTOS
+  CAMPUS
+  OTRO
+}
+
 model User {
   id            String              @id @default(cuid())
   nombre        String
@@ -150,4 +159,18 @@ model ChatMessage {
   createdAt      DateTime          @default(now())
 
   @@index([conversationId, createdAt])
+}
+
+// --- Base de conocimiento de la UPEA (editable desde la BD) ---
+model Conocimiento {
+  id        String              @id @default(cuid())
+  titulo    String
+  categoria CategoriaConocimiento
+  contenido String              @db.Text
+  activo    Boolean             @default(true)
+  version   Int                 @default(1)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@index([activo, categoria])
 }

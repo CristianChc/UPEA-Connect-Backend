@@ -353,3 +353,126 @@ Body `{ "actionStatus": "DONE" | "DISCARDED" }`. Respuesta `200`: `{ "id": "…"
 ### `DELETE /api/ai/conversations/:id`
 
 Borra la conversación y sus mensajes. Respuesta `204`.
+
+---
+
+## 5. Administración de conocimiento `/api/admin/conocimiento`
+
+Estos endpoints permiten editar la base de conocimiento de la UPEA que usa el asistente de IA. **No requieren JWT de usuario**, se autentican con la variable de entorno `ADMIN_API_KEY` enviada en el header `x-admin-key`.
+
+Si `ADMIN_API_KEY` no está definida en el servidor, todos responden `401`.
+
+### `GET /api/admin/conocimiento`
+
+Lista documentos de conocimiento. Soporta filtros `categoria` y `activo`, más paginación `page`/`limit`.
+
+**Headers:** `x-admin-key: <ADMIN_API_KEY>`
+
+**Query params (opcionales):** `?categoria=TRAMITES`, `?activo=true`, `?page=1`, `?limit=20`
+
+Categorías válidas: `TRAMITES`, `REGLAMENTO`, `CALENDARIO`, `CONTACTOS`, `CAMPUS`, `OTRO`.
+
+**200:**
+```json
+{
+  "conocimientos": [
+    {
+      "id": "cmst...",
+      "titulo": "Matrícula de nuevos estudiantes",
+      "categoria": "TRAMITES",
+      "contenido": "Proceso, requisitos, fechas y costos de matrícula...",
+      "activo": true,
+      "version": 1,
+      "createdAt": "2026-11-05T20:00:00Z",
+      "updatedAt": "2026-11-05T20:00:00Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "limit": 20
+}
+```
+
+**Ejemplo curl:**
+```bash
+curl -H "x-admin-key: TU_CLAVE_ADMIN" \
+  "http://localhost:3000/api/admin/conocimiento?categoria=TRAMITES"
+```
+
+### `POST /api/admin/conocimiento`
+
+Crea un documento de conocimiento.
+
+**Headers:** `x-admin-key: <ADMIN_API_KEY>`, `Content-Type: application/json`
+
+**Body:**
+```json
+{
+  "titulo": "Matrícula de nuevos estudiantes",
+  "categoria": "TRAMITES",
+  "contenido": "Proceso, requisitos, fechas y costos de matrícula para estudiantes nuevos. Contacto: secretaría académica.",
+  "activo": true,
+  "version": 1
+}
+```
+
+**201:** documento creado (mismo formato que GET).
+
+**Errores:** 400 datos inválidos · 401 clave de administrador faltante o incorrecta.
+
+**Ejemplo curl:**
+```bash
+curl -X POST http://localhost:3000/api/admin/conocimiento \
+  -H "x-admin-key: TU_CLAVE_ADMIN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "titulo": "Matrícula de nuevos estudiantes",
+    "categoria": "TRAMITES",
+    "contenido": "Proceso, requisitos, fechas y costos de matrícula...",
+    "activo": true,
+    "version": 1
+  }'
+```
+
+### `PUT /api/admin/conocimiento/:id`
+
+Actualiza un documento existente (todos los campos opcionales, envía solo lo que cambia).
+
+**Headers:** `x-admin-key: <ADMIN_API_KEY>`, `Content-Type: application/json`
+
+**Body:** `{ "titulo"?, "categoria"?, "contenido"?, "activo"?, "version"? }`
+
+**200:** documento actualizado.
+
+**Ejemplo curl:**
+```bash
+curl -X PUT http://localhost:3000/api/admin/conocimiento/cmst_xyz \
+  -H "x-admin-key: TU_CLAVE_ADMIN" \
+  -H "Content-Type: application/json" \
+  -d '{ "activo": false }'
+```
+
+### `DELETE /api/admin/conocimiento/:id`
+
+Elimina un documento de conocimiento.
+
+**Headers:** `x-admin-key: <ADMIN_API_KEY>`
+
+**204:** sin cuerpo.
+
+**Ejemplo curl:**
+```bash
+curl -X DELETE http://localhost:3000/api/admin/conocimiento/cmst_xyz \
+  -H "x-admin-key: TU_CLAVE_ADMIN"
+```
+
+---
+
+## Endpoints de referencia (resumen)
+
+| Método | Path | Auth | Descripción |
+|--------|------|------|-------------|
+| GET | `/api/admin/conocimiento` | `x-admin-key` | Listar conocimiento |
+| POST | `/api/admin/conocimiento` | `x-admin-key` | Crear conocimiento |
+| PUT | `/api/admin/conocimiento/:id` | `x-admin-key` | Actualizar conocimiento |
+| DELETE | `/api/admin/conocimiento/:id` | `x-admin-key` | Eliminar conocimiento |
