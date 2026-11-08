@@ -24,3 +24,20 @@ export async function sendVerificationCode(email: string, code: string): Promise
   });
   console.log("Correo enviado:", info.messageId, info.response);
 }
+
+export async function sendPasswordResetCode(email: string, code: string): Promise<void> {
+  const info = await transporter.sendMail({
+    from: `"UPEA-Connect" <${process.env.GMAIL_USER}>`,
+    to: email,
+    subject: "Restablece tu contraseña — UPEA-Connect",
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2>Restablecer contraseña</h2>
+        <p>Tu código para restablecer la contraseña es:</p>
+        <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px;">${code}</p>
+        <p>Este código expira en 15 minutos. Si no solicitaste esto, ignora este correo.</p>
+      </div>
+    `,
+  });
+  console.log("Correo de restablecimiento enviado:", info.messageId, info.response);
+}

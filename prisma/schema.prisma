@@ -53,6 +53,7 @@ model User {
   fotoUrl       String?
   emailVerified Boolean             @default(false)
   verification  EmailVerification?
+  passwordReset PasswordReset?
   notes         Note[]
   events        Event[]
   conversations ChatConversation[]
@@ -173,4 +174,18 @@ model Conocimiento {
   updatedAt DateTime            @updatedAt
 
   @@index([activo, categoria])
+}
+
+// --- Recuperación de contraseña ---
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  lastSentAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
