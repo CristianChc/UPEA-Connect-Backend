@@ -103,6 +103,16 @@ export const verifyEmailSchema = z.object({
   code: z.string().length(6, "El código debe tener 6 dígitos"),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email("Email inválido"),
+});
+
+export const resetPasswordSchema = z.object({
+  email: z.string().email("Email inválido"),
+  code: z.string().length(6, "El código debe tener 6 dígitos").regex(/^\d{6}$/, "El código debe contener 6 dígitos numéricos"),
+  newPassword: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
+});
+
 export const categoriaConocimientoSchema = z.enum([
   "TRAMITES",
   "REGLAMENTO",
@@ -154,3 +164,5 @@ export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 export type UpdateChatActionInput = z.infer<typeof updateChatActionSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

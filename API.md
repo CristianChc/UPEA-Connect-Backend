@@ -32,6 +32,7 @@ Toda la API responde errores con el mismo formato:
 | Código | Error | Cuándo |
 |--------|-------|--------|
 | 400 | `VALIDATION_ERROR` | Datos inválidos (falta campo, formato incorrecto) |
+| 400 | `INVALID_OR_EXPIRED_CODE` | Código de restablecimiento inválido, expirado o demasiados intentos |
 | 401 | `UNAUTHORIZED` | Token faltante, inválido o expirado; credenciales incorrectas |
 | 404 | `NOT_FOUND` | Recurso no existe o no te pertenece |
 | 409 | `DUPLICATE_RESOURCE` | El email ya está registrado |
@@ -107,6 +108,56 @@ Actualiza el perfil. Todos los campos son opcionales (envía solo lo que cambia)
 **Body:** `{ "nombre": "Juan Pérez López", "carrera": "Ingeniería de Sistemas", "semestre": "6to Semestre", "fotoUrl": "https://..." }`
 
 **200:** usuario actualizado (mismo formato que `me`).
+
+### `POST /api/auth/forgot-password`
+
+Solicita un código de 6 dígitos para restablecer la contraseña. Es público (no requiere JWT).
+
+**Siempre responde `{ "sent": true }` con status 200**, incluso si el correo no existe o ya se envió un código recientemente (enfriamiento de 60 s). Esto evita revelar si un correo está registrado.
+
+**Body:**
+```json
+{ "email": "juan@upea.edu.bo" }
+```
+
+**200:** `{ "sent": true }`
+
+**Errores:** 400 datos inválidos · 500 error del servidor.
+
+**Ejemplo curl:**
+```bash
+curl -X POST http://localhost:3000/api/auth/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "juan@upea.edu.bo" }'
+```
+
+### `POST /api/auth/reset-password`
+
+Restablece la contraseña usando el código recibido por correo. Es público (no requiere JWT).
+
+**Body:**
+```json
+{
+  "email": "juan@upea.edu.bo",
+  "code": "123456",
+  "newPassword": "nuevaContraseña123"
+}
+```
+
+**200:** `{ "reset": true }`
+
+**Errores:** 400 datos inválidos · 400 `INVALID_OR_EXPIRED_CODE` (código inválido, expirado, demasiados intentos o correo sin solicitud previa) · 500 error del servidor.
+
+**Ejemplo curl:**
+```bash
+curl -X POST http://localhost:3000/api/auth/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "juan@upea.edu.bo",
+    "code": "123456",
+    "newPassword": "nuevaContraseña123"
+  }'
+```
 
 ---
 
@@ -280,6 +331,8 @@ Elimina el evento. **204** sin cuerpo.
 |--------|------|-----------|-----------|
 | POST | `/api/auth/register` | nombre, email, password, carrera, semestre | 201 |
 | POST | `/api/auth/login` | email, password | 200 |
+| POST | `/api/auth/forgot-password` | email | 200 |
+| POST | `/api/auth/reset-password` | email, code, newPassword | 200 |
 | GET | `/api/auth/me` | — | 200 |
 | PUT | `/api/auth/profile` | parcial + fotoUrl | 200 |
 | GET | `/api/notes` | search, courseName, page, limit | 200 |
